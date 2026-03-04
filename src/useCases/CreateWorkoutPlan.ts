@@ -11,21 +11,18 @@ interface InputDto {
     isRest: boolean;
     estimatedDurationInSeconds: number;
     exercises: Array<{
-      // CORRIGIDO
       order: number;
       name: string;
       sets: number;
       reps: number;
-      restTimeInSeconds: number; // CORRIGIDO
+      restTimeInSeconds: number;
     }>;
   }>;
 }
 
 export class CreateWorkoutPlan {
   async execute(dto: InputDto) {
-    // Importante: Mova a busca para dentro da transação para evitar que 2 planos fiquem ativos
     return prisma.$transaction(async (tx) => {
-      // 1. Desativa plano ativo do usuário específico
       const existingActiveWorkoutPlan = await tx.workoutPlan.findFirst({
         where: { userId: dto.userId, isActive: true },
       });
@@ -36,10 +33,9 @@ export class CreateWorkoutPlan {
           data: { isActive: false },
         });
       }
-
-      // 2. Cria o plano (usando os nomes EXATOS do schema.prisma)
       const workoutPlan = await tx.workoutPlan.create({
         data: {
+          id: crypto.randomUUID(),
           name: dto.name,
           userId: dto.userId,
           isActive: true,
@@ -50,13 +46,12 @@ export class CreateWorkoutPlan {
               isRest: day.isRest,
               estimatedDurationInSeconds: day.estimatedDurationInSeconds,
               exercises: {
-                // Nome da relação no WorkoutDay model
                 create: day.exercises.map((ex) => ({
                   name: ex.name,
                   order: ex.order,
                   sets: ex.sets,
                   reps: ex.reps,
-                  restTimeInSeconds: ex.restTimeInSeconds, // Nome no WorkoutExercise model
+                  restTimeInSeconds: ex.restTimeInSeconds,
                 })),
               },
             })),
@@ -64,7 +59,6 @@ export class CreateWorkoutPlan {
         },
       });
 
-      // 3. Busca o resultado completo para retornar ao cliente
       const result = await tx.workoutPlan.findUnique({
         where: { id: workoutPlan.id },
         include: {
